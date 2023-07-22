@@ -4,6 +4,7 @@ import random
 import ipaddress
 import netifaces as ni
 import json
+import requests
 
 def get_active_interface():
     interfaces = ni.interfaces()
@@ -20,10 +21,21 @@ def get_current_ip(interface):
     return ip
 
 def change_ip(interface, proxy):
-    auth_string = ""
+    auth_string = f"{proxy.get('USERNAME', '')}:{proxy.get('PASSWORD', '')}@"
     os.system(f"export http_proxy={auth_string}{proxy['IP']}:{proxy['PORT']}")
     os.system(f"export https_proxy={auth_string}{proxy['IP']}:{proxy['PORT']}")
     time.sleep(2)
+
+def validate_proxy(proxy):
+    try:
+        response = requests.get("https://api.ipify.org?format=json", proxies={"http": f"http://{proxy['IP']}:{proxy['PORT']}",
+                                                                             "https": f"http://{proxy['IP']}:{proxy['PORT']}"}, timeout=10)
+        response.raise_for_status()
+        print(f"Proxy {proxy['IP']}:{proxy['PORT']} is valid and responsive.")
+        return True
+    except (requests.RequestException, requests.Timeout):
+        print(f"Proxy {proxy['IP']}:{proxy['PORT']} is not responding. Skipping.")
+        return False
 
 if __name__ == "__main__":
     interface = get_active_interface()
@@ -40,11 +52,11 @@ if __name__ == "__main__":
             if not proxy_list:
                 print("No proxies found in the JSON file.")
             else:
-                interval = 30  # Interval in seconds for IP rotation
-                while True:
-                    proxy = get_random_proxy(proxy_list)
-                    change_ip(interface, proxy)
-                    time.sleep(interval)
+                interval = int(input("Enter the rotation interval in seconds: "))
+                for proxy in proxy_list:
+                    if validate_proxy(proxy):
+                        while True:
+                            change_ip(interface, proxy)
+                            time.sleep(interval)
         except KeyboardInterrupt:
             print("IP rotation stopped.")
-
